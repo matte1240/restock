@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { generateId } from "@/lib/id";
 import type { OrderFrequency, Supplier } from "@/lib/types";
 
 const STORAGE_KEY = "restock-suppliers-v1";
@@ -40,7 +41,7 @@ export function SupplierManager({ suppliers, onChange }: SupplierManagerProps) {
 
   function addSupplier() {
     const newSupplier: Supplier = {
-      id: crypto.randomUUID(),
+      id: generateId(),
       nome: "",
       prefissi: [],
       frequenza: "settimanale",
