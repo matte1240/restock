@@ -12,7 +12,6 @@ export default function Home() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [overrides, setOverrides] = useState<Record<string, string | null>>({});
   const [proposals, setProposals] = useState<SupplierOrderProposal[] | null>(null);
-  const [nonAssegnati, setNonAssegnati] = useState<Article[]>([]);
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
@@ -23,7 +22,6 @@ export default function Home() {
     setArticles(parsed);
     setOverrides({});
     setProposals(null);
-    setNonAssegnati([]);
     setGenerateError(null);
   }
 
@@ -40,7 +38,6 @@ export default function Home() {
       const data = (await res.json()) as GenerateOrdersResponse & { error?: string };
       if (!res.ok) throw new Error(data.error ?? "Errore durante la generazione della proposta.");
       setProposals(data.proposals);
-      setNonAssegnati(data.nonAssegnati);
     } catch (err) {
       setGenerateError(err instanceof Error ? err.message : "Errore imprevisto.");
     } finally {
@@ -121,7 +118,8 @@ export default function Home() {
               <div>
                 <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">4. Genera proposta ordini</h2>
                 <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-                  L&apos;AI calcola, per ciascun fornitore, le quantità consigliate da ordinare.
+                  L&apos;AI calcola le quantità consigliate da ordinare per ciascun fornitore. Gli articoli
+                  senza fornitore assegnato vengono comunque inclusi, raggruppati sotto &quot;Non assegnato&quot;.
                 </p>
               </div>
               <button
@@ -134,11 +132,6 @@ export default function Home() {
               </button>
             </div>
             {generateError && <p className="mt-3 text-sm text-red-600 dark:text-red-400">{generateError}</p>}
-            {nonAssegnati.length > 0 && (
-              <p className="mt-3 text-sm text-amber-600 dark:text-amber-400">
-                {nonAssegnati.length} articoli non assegnati a nessun fornitore sono stati esclusi dalla proposta.
-              </p>
-            )}
           </div>
         )}
 

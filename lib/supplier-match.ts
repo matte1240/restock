@@ -1,5 +1,17 @@
 import type { Article, Supplier } from "./types";
 
+export const UNASSIGNED_SUPPLIER_ID = "non-assegnato";
+
+/** Virtual bucket for articles with no (or an ambiguous) supplier prefix match, so the
+ * AI still proposes quantities for them instead of silently excluding them. */
+export const UNASSIGNED_SUPPLIER: Supplier = {
+  id: UNASSIGNED_SUPPLIER_ID,
+  nome: "Non assegnato",
+  prefissi: [],
+  frequenza: "mensile",
+  frequenzaGiorni: 30,
+};
+
 export interface MatchResult {
   fornitoreId: string | null;
   fornitoreNome: string | null;

@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
 import { createAnthropicClient, generateOrderProposalForSupplier } from "@/lib/ai";
 import { computeArticleMetrics } from "@/lib/metrics";
-import { matchArticleToSupplier } from "@/lib/supplier-match";
+import { matchArticleToSupplier, UNASSIGNED_SUPPLIER, UNASSIGNED_SUPPLIER_ID } from "@/lib/supplier-match";
 import type {
   AssignedArticle,
-  Article,
   GenerateOrdersRequest,
   GenerateOrdersResponse,
   Supplier,
@@ -42,19 +41,16 @@ export async function POST(request: Request) {
   }
 
   const supplierById = new Map<string, Supplier>(suppliers.map((s) => [s.id, s]));
-  const nonAssegnati: Article[] = [];
+  supplierById.set(UNASSIGNED_SUPPLIER.id, UNASSIGNED_SUPPLIER);
   const assignedBySupplier = new Map<string, AssignedArticle[]>();
 
   for (const article of articles) {
     const overrideId = assignments?.[article.codice];
     const auto = matchArticleToSupplier(article.codice, suppliers);
     const fornitoreId = overrideId !== undefined ? overrideId : auto.fornitoreId;
-    const supplier = fornitoreId ? supplierById.get(fornitoreId) : undefined;
-
-    if (!supplier) {
-      nonAssegnati.push(article);
-      continue;
-    }
+    // Articles with no (or an ambiguous) supplier match still get a proposal,
+    // grouped under the virtual "Non assegnato" supplier instead of being dropped.
+    const supplier = (fornitoreId ? supplierById.get(fornitoreId) : undefined) ?? UNASSIGNED_SUPPLIER;
 
     const metrics = computeArticleMetrics(article);
     const assigned: AssignedArticle = {
@@ -68,10 +64,15 @@ export async function POST(request: Request) {
     assignedBySupplier.set(supplier.id, bucket);
   }
 
+  const supplierIdsInOrder = [...assignedBySupplier.keys()].sort((a, b) =>
+    a === UNASSIGNED_SUPPLIER_ID ? 1 : b === UNASSIGNED_SUPPLIER_ID ? -1 : 0
+  );
+
   const proposals: SupplierOrderProposal[] = [];
   try {
-    for (const [supplierId, supplierArticles] of assignedBySupplier) {
+    for (const supplierId of supplierIdsInOrder) {
       const supplier = supplierById.get(supplierId)!;
+      const supplierArticles = assignedBySupplier.get(supplierId)!;
       const righe = await generateOrderProposalForSupplier(anthropicClient, supplier, supplierArticles);
       proposals.push({ fornitoreId: supplier.id, fornitoreNome: supplier.nome, righe });
     }
@@ -83,6 +84,6 @@ export async function POST(request: Request) {
     );
   }
 
-  const response: GenerateOrdersResponse = { proposals, nonAssegnati };
+  const response: GenerateOrdersResponse = { proposals };
   return NextResponse.json(response);
 }

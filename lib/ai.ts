@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { UNASSIGNED_SUPPLIER_ID } from "./supplier-match";
 import type { AssignedArticle, OrderLine, Supplier } from "./types";
 
 const BATCH_SIZE = 45;
@@ -63,7 +64,12 @@ function buildPrompt(supplier: Supplier, articles: AssignedArticle[]): string {
     )
     .join("\n");
 
-  return `Sei un assistente per la gestione del magazzino. Devi proporre le quantità da ordinare per il fornitore "${supplier.nome}", che riceve ordini ogni ${supplier.frequenzaGiorni} giorni.
+  const contextLine =
+    supplier.id === UNASSIGNED_SUPPLIER_ID
+      ? `Sei un assistente per la gestione del magazzino. Questi articoli non sono ancora stati assegnati a un fornitore specifico: proponi comunque le quantità da ordinare assumendo un ciclo di riordino generico di ${supplier.frequenzaGiorni} giorni.`
+      : `Sei un assistente per la gestione del magazzino. Devi proporre le quantità da ordinare per il fornitore "${supplier.nome}", che riceve ordini ogni ${supplier.frequenzaGiorni} giorni.`;
+
+  return `${contextLine}
 
 Per ogni articolo hai a disposizione:
 - giacenzaAttuale: unità fisicamente in magazzino

@@ -47,5 +47,4 @@ export interface GenerateOrdersRequest {
 
 export interface GenerateOrdersResponse {
   proposals: SupplierOrderProposal[];
-  nonAssegnati: Article[];
 }
