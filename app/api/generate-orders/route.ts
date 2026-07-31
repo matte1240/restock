@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { createAnthropicClient, generateOrderProposalForSupplier } from "@/lib/ai";
+import { getCatalogEntries, listSuppliers } from "@/lib/db";
 import { computeArticleMetrics } from "@/lib/metrics";
+import { roundUpToPackaging } from "@/lib/packaging";
 import { matchArticleToSupplier, UNASSIGNED_SUPPLIER, UNASSIGNED_SUPPLIER_ID } from "@/lib/supplier-match";
 import type {
   AssignedArticle,
+  CatalogEntry,
   GenerateOrdersRequest,
   GenerateOrdersResponse,
   Supplier,
@@ -21,14 +24,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Corpo della richiesta non valido." }, { status: 400 });
   }
 
-  const { articles, suppliers, assignments } = body;
+  const { articles, assignments } = body;
 
   if (!Array.isArray(articles) || articles.length === 0) {
     return NextResponse.json({ error: "Nessun articolo fornito." }, { status: 400 });
   }
-  if (!Array.isArray(suppliers) || suppliers.length === 0) {
+
+  const suppliers = listSuppliers();
+  if (suppliers.length === 0) {
     return NextResponse.json({ error: "Nessun fornitore configurato." }, { status: 400 });
   }
+
+  const catalogByCode = new Map<string, CatalogEntry>(
+    getCatalogEntries(articles.map((a) => a.codice.trim().toUpperCase())).map((e) => [e.codice, e])
+  );
 
   let anthropicClient;
   try {
@@ -73,7 +82,21 @@ export async function POST(request: Request) {
     for (const supplierId of supplierIdsInOrder) {
       const supplier = supplierById.get(supplierId)!;
       const supplierArticles = assignedBySupplier.get(supplierId)!;
-      const righe = await generateOrderProposalForSupplier(anthropicClient, supplier, supplierArticles);
+      const righeGrezze = await generateOrderProposalForSupplier(
+        anthropicClient,
+        supplier,
+        supplierArticles,
+        catalogByCode
+      );
+      const righe = righeGrezze.map((riga) => {
+        if (!riga.quantitaPerConfezione) return riga;
+        const quantitaConsigliata = roundUpToPackaging(riga.quantitaConsigliata, riga.quantitaPerConfezione);
+        return {
+          ...riga,
+          quantitaConsigliata,
+          quantitaConfezioni: quantitaConsigliata / riga.quantitaPerConfezione,
+        };
+      });
       proposals.push({ fornitoreId: supplier.id, fornitoreNome: supplier.nome, righe });
     }
   } catch (error) {

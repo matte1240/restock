@@ -1,10 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { generateId } from "@/lib/id";
+import { useEffect, useRef, useState } from "react";
 import type { OrderFrequency, Supplier } from "@/lib/types";
-
-const STORAGE_KEY = "restock-suppliers-v1";
 
 const FREQUENCY_DAYS: Record<Exclude<OrderFrequency, "personalizzata">, number> = {
   settimanale: 7,
@@ -12,50 +9,76 @@ const FREQUENCY_DAYS: Record<Exclude<OrderFrequency, "personalizzata">, number> 
   mensile: 30,
 };
 
+const SAVE_DEBOUNCE_MS = 500;
+
 interface SupplierManagerProps {
   suppliers: Supplier[];
   onChange: (suppliers: Supplier[]) => void;
 }
 
 export function SupplierManager({ suppliers, onChange }: SupplierManagerProps) {
-  const hydrated = useRef(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   useEffect(() => {
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored) as Supplier[];
-        if (Array.isArray(parsed) && parsed.length > 0) onChange(parsed);
-      } catch {
-        // ignore corrupted storage
-      }
-    }
-    hydrated.current = true;
+    fetch("/api/suppliers")
+      .then((res) => res.json())
+      .then((data: { suppliers?: Supplier[]; error?: string }) => {
+        if (data.error) throw new Error(data.error);
+        onChange(data.suppliers ?? []);
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : "Errore nel caricamento dei fornitori."))
+      .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    if (!hydrated.current) return;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(suppliers));
-  }, [suppliers]);
-
-  function addSupplier() {
-    const newSupplier: Supplier = {
-      id: generateId(),
-      nome: "",
-      prefissi: [],
-      frequenza: "settimanale",
-      frequenzaGiorni: 7,
-    };
-    onChange([...suppliers, newSupplier]);
+  async function addSupplier() {
+    setError(null);
+    try {
+      const res = await fetch("/api/suppliers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nome: "", prefissi: [], frequenza: "settimanale", frequenzaGiorni: 7 }),
+      });
+      const data = (await res.json()) as { supplier?: Supplier; error?: string };
+      if (!res.ok || !data.supplier) throw new Error(data.error ?? "Errore nella creazione del fornitore.");
+      onChange([...suppliers, data.supplier]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Errore imprevisto.");
+    }
   }
 
   function updateSupplier(id: string, patch: Partial<Supplier>) {
     onChange(suppliers.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+
+    clearTimeout(saveTimers.current[id]);
+    saveTimers.current[id] = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/suppliers/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(patch),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error ?? "Errore nel salvataggio del fornitore.");
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Errore imprevisto durante il salvataggio.");
+      }
+    }, SAVE_DEBOUNCE_MS);
   }
 
-  function removeSupplier(id: string) {
+  async function removeSupplier(id: string) {
+    setError(null);
     onChange(suppliers.filter((s) => s.id !== id));
+    try {
+      const res = await fetch(`/api/suppliers/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Errore nella rimozione del fornitore.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Errore imprevisto.");
+    }
   }
 
   return (
@@ -64,7 +87,8 @@ export function SupplierManager({ suppliers, onChange }: SupplierManagerProps) {
         <div>
           <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">2. Fornitori</h2>
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-            Prefisso codice articolo (es. CAL, S, 3M) e frequenza ordini per ciascun fornitore.
+            Prefisso codice articolo (es. CAL, S, 3M) e frequenza ordini per ciascun fornitore. Salvati nel
+            database del server.
           </p>
         </div>
         <button
@@ -76,8 +100,13 @@ export function SupplierManager({ suppliers, onChange }: SupplierManagerProps) {
         </button>
       </div>
 
+      {error && <p className="mt-3 text-sm text-red-600 dark:text-red-400">{error}</p>}
+
       <div className="mt-4 space-y-3">
-        {suppliers.length === 0 && <p className="text-sm text-zinc-400">Nessun fornitore configurato.</p>}
+        {loading && <p className="text-sm text-zinc-400">Caricamento fornitori...</p>}
+        {!loading && suppliers.length === 0 && (
+          <p className="text-sm text-zinc-400">Nessun fornitore configurato.</p>
+        )}
         {suppliers.map((supplier) => (
           <div
             key={supplier.id}

@@ -9,6 +9,7 @@ const HEADERS = [
   "Consumo Medio Giornaliero",
   "Copertura Attuale (gg)",
   "Quantità da Ordinare",
+  "Confezione",
   "Nota AI",
 ];
 
@@ -50,6 +51,11 @@ export async function buildOrdersWorkbook(proposals: SupplierOrderProposal[]): P
         Number(riga.consumoMedioGiornaliero.toFixed(2)),
         riga.coperturaGiorniAttuale !== null ? Number(riga.coperturaGiorniAttuale.toFixed(1)) : "",
         riga.quantitaConsigliata,
+        riga.quantitaPerConfezione
+          ? `${riga.unitaConfezione ?? "confezione"} da ${riga.quantitaPerConfezione} pz — ${
+              riga.quantitaConfezioni !== null ? riga.quantitaConfezioni.toFixed(1) : "?"
+            }`
+          : "",
         riga.nota,
       ]);
     }

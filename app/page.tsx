@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ArticleCatalog } from "@/components/ArticleCatalog";
 import { AssignmentReview } from "@/components/AssignmentReview";
 import { FileUpload } from "@/components/FileUpload";
 import { OrderProposalTable } from "@/components/OrderProposalTable";
@@ -33,7 +34,7 @@ export default function Home() {
       const res = await fetch("/api/generate-orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ articles, suppliers, assignments: overrides }),
+        body: JSON.stringify({ articles, assignments: overrides }),
       });
       const data = (await res.json()) as GenerateOrdersResponse & { error?: string };
       if (!res.ok) throw new Error(data.error ?? "Errore durante la generazione della proposta.");
@@ -54,7 +55,15 @@ export default function Home() {
               : {
                   ...proposal,
                   righe: proposal.righe.map((riga) =>
-                    riga.codice === codice ? { ...riga, quantitaConsigliata: quantita } : riga
+                    riga.codice === codice
+                      ? {
+                          ...riga,
+                          quantitaConsigliata: quantita,
+                          quantitaConfezioni: riga.quantitaPerConfezione
+                            ? quantita / riga.quantitaPerConfezione
+                            : null,
+                        }
+                      : riga
                   ),
                 }
           )
@@ -102,6 +111,8 @@ export default function Home() {
         <FileUpload onParsed={handleArticlesParsed} />
 
         <SupplierManager suppliers={suppliers} onChange={setSuppliers} />
+
+        <ArticleCatalog />
 
         {articles && articles.length > 0 && suppliers.length > 0 && (
           <AssignmentReview

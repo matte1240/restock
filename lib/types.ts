@@ -31,6 +31,21 @@ export interface AssignedArticle extends ArticleMetrics {
 export interface OrderLine extends AssignedArticle {
   quantitaConsigliata: number;
   nota: string;
+  quantitaPerConfezione: number | null;
+  unitaConfezione: string | null;
+  quantitaConfezioni: number | null;
+}
+
+export interface CatalogEntry {
+  codice: string;
+  fornitoreId: string | null;
+  descrizione: string | null;
+  ordinaAConfezione: boolean;
+  unitaConfezione: string | null;
+  quantitaPerConfezione: number | null;
+  note: string | null;
+  fonte: string | null;
+  aggiornatoIl: string;
 }
 
 export interface SupplierOrderProposal {
@@ -41,7 +56,6 @@ export interface SupplierOrderProposal {
 
 export interface GenerateOrdersRequest {
   articles: Article[];
-  suppliers: Supplier[];
   assignments: Record<string, string | null>;
 }
 

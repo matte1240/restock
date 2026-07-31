@@ -28,6 +28,7 @@ export function OrderProposalTable({ proposals, onQuantityChange }: OrderProposa
                 <th className="px-4 py-2">Consumo medio/gg</th>
                 <th className="px-4 py-2">Copertura (gg)</th>
                 <th className="px-4 py-2">Qtà da ordinare</th>
+                <th className="px-4 py-2">Confezione</th>
                 <th className="px-4 py-2">Nota AI</th>
               </tr>
             </thead>
@@ -52,6 +53,13 @@ export function OrderProposalTable({ proposals, onQuantityChange }: OrderProposa
                         onQuantityChange(proposal.fornitoreId, riga.codice, Number(e.target.value) || 0)
                       }
                     />
+                  </td>
+                  <td className="px-4 py-2 text-zinc-500 dark:text-zinc-400">
+                    {riga.quantitaPerConfezione
+                      ? `${riga.unitaConfezione ?? "confezione"} da ${riga.quantitaPerConfezione} pz — ${
+                          riga.quantitaConfezioni !== null ? riga.quantitaConfezioni.toFixed(1) : "?"
+                        }`
+                      : "—"}
                   </td>
                   <td className="px-4 py-2 text-zinc-500 dark:text-zinc-400">{riga.nota}</td>
                 </tr>
