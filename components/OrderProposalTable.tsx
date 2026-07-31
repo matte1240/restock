@@ -25,6 +25,7 @@ export function OrderProposalTable({ proposals, onQuantityChange }: OrderProposa
                 <th className="px-4 py-2">Giacenza</th>
                 <th className="px-4 py-2">Impegnato</th>
                 <th className="px-4 py-2">Ordinato</th>
+                <th className="px-4 py-2">Scorta min</th>
                 <th className="px-4 py-2">Consumo medio/gg</th>
                 <th className="px-4 py-2">Copertura (gg)</th>
                 <th className="px-4 py-2">Qtà da ordinare</th>
@@ -39,6 +40,7 @@ export function OrderProposalTable({ proposals, onQuantityChange }: OrderProposa
                   <td className="px-4 py-2">{riga.giacenzaAttuale}</td>
                   <td className="px-4 py-2">{riga.impegnato}</td>
                   <td className="px-4 py-2">{riga.ordinato}</td>
+                  <td className="px-4 py-2">{riga.scortaMinima ?? "—"}</td>
                   <td className="px-4 py-2">{riga.consumoMedioGiornaliero.toFixed(2)}</td>
                   <td className="px-4 py-2">
                     {riga.coperturaGiorniAttuale !== null ? riga.coperturaGiorniAttuale.toFixed(1) : "n/d"}

@@ -85,6 +85,21 @@ export interface EnrichArticleResult {
   fonte: string | null;
 }
 
+/** The reorder lot from the uploaded Excel (fresh, per-upload ERP data) takes priority
+ * over the catalog's AI-researched packaging size when both are present. */
+function effectivePackaging(
+  article: AssignedArticle,
+  catalog: CatalogEntry | undefined
+): { multiplo: number | null; unita: string | null } {
+  if (article.lottoRiordino && article.lottoRiordino > 1) {
+    return { multiplo: article.lottoRiordino, unita: catalog?.unitaConfezione ?? "lotto" };
+  }
+  if (catalog?.ordinaAConfezione && catalog.quantitaPerConfezione) {
+    return { multiplo: catalog.quantitaPerConfezione, unita: catalog.unitaConfezione };
+  }
+  return { multiplo: null, unita: null };
+}
+
 function chunk<T>(items: T[], size: number): T[][] {
   const chunks: T[][] = [];
   for (let i = 0; i < items.length; i += size) {
@@ -101,6 +116,7 @@ function buildPrompt(
   const rows = articles
     .map((a) => {
       const catalog = catalogByCode.get(a.codice.trim().toUpperCase());
+      const { multiplo, unita } = effectivePackaging(a, catalog);
       const fields = [
         `codice=${a.codice}`,
         `giacenzaAttuale=${a.giacenzaAttuale}`,
@@ -110,10 +126,11 @@ function buildPrompt(
         `disponibilitaNetta=${a.disponibilitaNetta}`,
         `coperturaGiorniAttuale=${a.coperturaGiorniAttuale !== null ? a.coperturaGiorniAttuale.toFixed(1) : "n/d"}`,
       ];
-      if (catalog?.ordinaAConfezione && catalog.quantitaPerConfezione) {
-        fields.push(
-          `confezionamento=venduto a ${catalog.unitaConfezione ?? "confezioni"} da ${catalog.quantitaPerConfezione} pezzi`
-        );
+      if (a.scortaMinima !== null) {
+        fields.push(`scortaMinima=${a.scortaMinima}`);
+      }
+      if (multiplo) {
+        fields.push(`confezionamento=venduto a ${unita ?? "confezioni"} da ${multiplo} pezzi`);
       }
       return fields.join(", ");
     })
@@ -133,9 +150,10 @@ Per ogni articolo hai a disposizione:
 - consumoMedioGiornaliero: consumo medio giornaliero stimato dall'inizio dell'anno
 - disponibilitaNetta: giacenzaAttuale + ordinato - impegnato
 - coperturaGiorniAttuale: quanti giorni durerebbe la disponibilitaNetta al ritmo di consumo attuale ("n/d" se il consumo è zero)
-- confezionamento (se presente): l'articolo si ordina solo in multipli di questa confezione; la quantità finale verrà comunque arrotondata per eccesso al multiplo più vicino, ma proponi già una quantità coerente con questo vincolo quando possibile
+- scortaMinima (se presente, dal file Excel): soglia minima di giacenza sotto cui non si dovrebbe mai scendere prima del prossimo riordino; trattala come vincolo prioritario rispetto al semplice calcolo di copertura
+- confezionamento (se presente, da lotto di riordino Excel o dal catalogo articoli): l'articolo si ordina solo in multipli di questa confezione; la quantità finale verrà comunque arrotondata per eccesso al multiplo più vicino, ma proponi già una quantità coerente con questo vincolo quando possibile
 
-Obiettivo: la quantità ordinata deve coprire il consumo previsto fino al prossimo ordine (tra ${supplier.frequenzaGiorni} giorni) più un margine di sicurezza ragionevole, evitando sia rotture di stock sia sovra-scorte eccessive. Se un articolo ha consumo pari a zero o copertura già ampiamente sufficiente, la quantità consigliata può essere 0.
+Obiettivo: la quantità ordinata deve coprire il consumo previsto fino al prossimo ordine (tra ${supplier.frequenzaGiorni} giorni) più un margine di sicurezza ragionevole, mantenendo la disponibilità sopra la scortaMinima quando specificata, evitando sia rotture di stock sia sovra-scorte eccessive. Se un articolo ha consumo pari a zero, copertura già ampiamente sufficiente e disponibilità sopra la scorta minima, la quantità consigliata può essere 0.
 
 Articoli:
 ${rows}
@@ -204,12 +222,13 @@ export async function generateOrderProposalForSupplier(
   return articles.map((article) => {
     const result = resultByCode.get(article.codice.trim().toUpperCase());
     const catalog = catalogByCode.get(article.codice.trim().toUpperCase());
+    const { multiplo, unita } = effectivePackaging(article, catalog);
     return {
       ...article,
       quantitaConsigliata: result ? Math.max(0, Math.round(result.quantitaConsigliata)) : 0,
       nota: result?.nota ?? "Nessuna raccomandazione ricevuta dall'AI.",
-      quantitaPerConfezione: catalog?.ordinaAConfezione ? catalog.quantitaPerConfezione : null,
-      unitaConfezione: catalog?.ordinaAConfezione ? catalog.unitaConfezione : null,
+      quantitaPerConfezione: multiplo,
+      unitaConfezione: unita,
       quantitaConfezioni: null,
     };
   });

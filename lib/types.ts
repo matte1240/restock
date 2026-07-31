@@ -5,6 +5,10 @@ export interface Article {
   ordinato: number;
   qtaScarico: number;
   qtaCarico: number;
+  /** Multiplo di riordino da Excel (colonna opzionale), se presente ha priorità sul confezionamento del catalogo. */
+  lottoRiordino: number | null;
+  /** Scorta minima da Excel (colonna opzionale): soglia sotto cui la giacenza non dovrebbe scendere. */
+  scortaMinima: number | null;
 }
 
 export type OrderFrequency = "settimanale" | "quindicinale" | "mensile" | "personalizzata";

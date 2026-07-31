@@ -1,13 +1,21 @@
 import ExcelJS from "exceljs";
 import type { Article } from "./types";
 
-const COLUMN_ALIASES: Record<keyof Article, string[]> = {
+type RequiredField = "codice" | "giacenzaAttuale" | "impegnato" | "ordinato" | "qtaScarico" | "qtaCarico";
+type OptionalField = "lottoRiordino" | "scortaMinima";
+
+const REQUIRED_COLUMN_ALIASES: Record<RequiredField, string[]> = {
   codice: ["codice articolo", "codice", "cod articolo", "cod. articolo"],
   giacenzaAttuale: ["giacenza attuale", "giacenza"],
   impegnato: ["impegnato"],
   ordinato: ["ordinato"],
   qtaScarico: ["qta scarico", "quantita scarico", "q.ta scarico", "qta' scarico"],
   qtaCarico: ["qta carico", "quantita carico", "q.ta carico", "qta' carico"],
+};
+
+const OPTIONAL_COLUMN_ALIASES: Record<OptionalField, string[]> = {
+  lottoRiordino: ["lotto riordino", "lotto di riordino", "lotto"],
+  scortaMinima: ["scorta minima", "scorta min", "giacenza minima", "scorta di sicurezza"],
 };
 
 function normalizeHeader(value: string): string {
@@ -31,19 +39,25 @@ export async function parseArticlesExcel(buffer: ArrayBuffer): Promise<Article[]
   }
 
   const headerRow = sheet.getRow(1);
-  const columnIndexByField = new Map<keyof Article, number>();
+  const requiredColumnIndex = new Map<RequiredField, number>();
+  const optionalColumnIndex = new Map<OptionalField, number>();
 
   headerRow.eachCell({ includeEmpty: false }, (cell, colNumber) => {
     const normalized = normalizeHeader(String(cell.value ?? ""));
-    for (const [field, aliases] of Object.entries(COLUMN_ALIASES) as [keyof Article, string[]][]) {
-      if (aliases.includes(normalized) && !columnIndexByField.has(field)) {
-        columnIndexByField.set(field, colNumber);
+    for (const [field, aliases] of Object.entries(REQUIRED_COLUMN_ALIASES) as [RequiredField, string[]][]) {
+      if (aliases.includes(normalized) && !requiredColumnIndex.has(field)) {
+        requiredColumnIndex.set(field, colNumber);
+      }
+    }
+    for (const [field, aliases] of Object.entries(OPTIONAL_COLUMN_ALIASES) as [OptionalField, string[]][]) {
+      if (aliases.includes(normalized) && !optionalColumnIndex.has(field)) {
+        optionalColumnIndex.set(field, colNumber);
       }
     }
   });
 
-  const missing = (Object.keys(COLUMN_ALIASES) as (keyof Article)[]).filter(
-    (field) => !columnIndexByField.has(field)
+  const missing = (Object.keys(REQUIRED_COLUMN_ALIASES) as RequiredField[]).filter(
+    (field) => !requiredColumnIndex.has(field)
   );
   if (missing.length > 0) {
     throw new ExcelParseError(
@@ -51,24 +65,32 @@ export async function parseArticlesExcel(buffer: ArrayBuffer): Promise<Article[]
     );
   }
 
+  function cellNumericValue(cell: ExcelJS.Cell): number | null {
+    const raw = cell.value;
+    if (typeof raw === "number") return raw;
+    if (raw && typeof raw === "object" && "result" in raw) {
+      const result = (raw as { result?: unknown }).result;
+      return typeof result === "number" ? result : Number(result ?? NaN);
+    }
+    if (raw === null || raw === undefined || raw === "") return null;
+    const parsed = Number(String(raw).replace(",", "."));
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
   const articles: Article[] = [];
   sheet.eachRow((row, rowNumber) => {
     if (rowNumber === 1) return;
 
-    const codiceCell = row.getCell(columnIndexByField.get("codice")!);
+    const codiceCell = row.getCell(requiredColumnIndex.get("codice")!);
     const codice = String(codiceCell.value ?? "").trim();
     if (!codice) return;
 
-    const readNumber = (field: keyof Article) => {
-      const cell = row.getCell(columnIndexByField.get(field)!);
-      const raw = cell.value;
-      if (typeof raw === "number") return raw;
-      if (raw && typeof raw === "object" && "result" in raw) {
-        const result = (raw as { result?: unknown }).result;
-        return typeof result === "number" ? result : Number(result ?? 0);
-      }
-      const parsed = Number(String(raw ?? "0").replace(",", "."));
-      return Number.isFinite(parsed) ? parsed : 0;
+    const readNumber = (field: RequiredField) => cellNumericValue(row.getCell(requiredColumnIndex.get(field)!)) ?? 0;
+
+    const readOptionalNumber = (field: OptionalField) => {
+      const colNumber = optionalColumnIndex.get(field);
+      if (colNumber === undefined) return null;
+      return cellNumericValue(row.getCell(colNumber));
     };
 
     articles.push({
@@ -78,6 +100,8 @@ export async function parseArticlesExcel(buffer: ArrayBuffer): Promise<Article[]
       ordinato: readNumber("ordinato"),
       qtaScarico: readNumber("qtaScarico"),
       qtaCarico: readNumber("qtaCarico"),
+      lottoRiordino: readOptionalNumber("lottoRiordino"),
+      scortaMinima: readOptionalNumber("scortaMinima"),
     });
   });
 
