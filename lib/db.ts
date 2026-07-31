@@ -1,7 +1,12 @@
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import type { CatalogEntry, OrderFrequency, Supplier } from "./types";
+import type { AiReasoningLevel, AiSettings, CatalogEntry, OrderFrequency, Supplier } from "./types";
+
+const DEFAULT_AI_SETTINGS: AiSettings = {
+  model: process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5",
+  reasoning: "none",
+};
 
 const DB_PATH = process.env.DATABASE_PATH ?? "./data/restock.db";
 
@@ -31,6 +36,12 @@ function getDb(): DatabaseSync {
       note TEXT,
       fonte TEXT,
       aggiornato_il TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS ai_settings (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      model TEXT NOT NULL,
+      reasoning TEXT NOT NULL
     );
   `);
   return db;
@@ -151,4 +162,27 @@ export function upsertCatalogEntry(entry: CatalogEntry): CatalogEntry {
       entry.aggiornatoIl
     );
   return entry;
+}
+
+interface AiSettingsRow {
+  model: string;
+  reasoning: AiReasoningLevel;
+}
+
+export function getAiSettings(): AiSettings {
+  const row = getDb().prepare("SELECT model, reasoning FROM ai_settings WHERE id = 1").get() as
+    | AiSettingsRow
+    | undefined;
+  return row ? { model: row.model, reasoning: row.reasoning } : DEFAULT_AI_SETTINGS;
+}
+
+export function saveAiSettings(settings: AiSettings): AiSettings {
+  getDb()
+    .prepare(
+      `INSERT INTO ai_settings (id, model, reasoning)
+       VALUES (1, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET model = excluded.model, reasoning = excluded.reasoning`
+    )
+    .run(settings.model, settings.reasoning);
+  return settings;
 }

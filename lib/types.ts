@@ -66,3 +66,16 @@ export interface GenerateOrdersRequest {
 export interface GenerateOrdersResponse {
   proposals: SupplierOrderProposal[];
 }
+
+export const AI_MODELS = [
+  { id: "claude-sonnet-5", label: "Sonnet 5 (bilanciato)" },
+  { id: "claude-opus-5", label: "Opus 5 (più capace, più lento/costoso)" },
+  { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5 (più veloce/economico)" },
+] as const;
+
+export type AiReasoningLevel = "none" | "adaptive" | "deep";
+
+export interface AiSettings {
+  model: string;
+  reasoning: AiReasoningLevel;
+}

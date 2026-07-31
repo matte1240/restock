@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAnthropicClient, enrichArticleWithWebSearch } from "@/lib/ai";
-import { getCatalogEntries, upsertCatalogEntry } from "@/lib/db";
+import { getAiSettings, getCatalogEntries, upsertCatalogEntry } from "@/lib/db";
 import type { CatalogEntry } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -30,11 +30,12 @@ export async function POST(request: Request) {
   }
 
   const existingByCode = new Map(getCatalogEntries(codici).map((e) => [e.codice, e]));
+  const aiSettings = getAiSettings();
 
   const entries: CatalogEntry[] = [];
   for (const codice of codici) {
     try {
-      const result = await enrichArticleWithWebSearch(client, codice);
+      const result = await enrichArticleWithWebSearch(client, codice, aiSettings.model, aiSettings.reasoning);
       const entry: CatalogEntry = {
         codice,
         fornitoreId: existingByCode.get(codice)?.fornitoreId ?? null,

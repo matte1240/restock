@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { AiSettingsPanel } from "@/components/AiSettingsPanel";
 import { ArticleCatalog } from "@/components/ArticleCatalog";
 import { AssignmentReview } from "@/components/AssignmentReview";
 import { FileUpload } from "@/components/FileUpload";
@@ -107,6 +108,8 @@ export default function Home() {
             Carica il file articoli, configura i fornitori e genera la proposta d&apos;ordine con l&apos;AI.
           </p>
         </header>
+
+        <AiSettingsPanel />
 
         <FileUpload onParsed={handleArticlesParsed} />
 

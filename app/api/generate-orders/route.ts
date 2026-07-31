@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAnthropicClient, generateOrderProposalForSupplier } from "@/lib/ai";
-import { getCatalogEntries, listSuppliers } from "@/lib/db";
+import { getAiSettings, getCatalogEntries, listSuppliers } from "@/lib/db";
 import { computeArticleMetrics } from "@/lib/metrics";
 import { roundUpToPackaging } from "@/lib/packaging";
 import { matchArticleToSupplier, UNASSIGNED_SUPPLIER, UNASSIGNED_SUPPLIER_ID } from "@/lib/supplier-match";
@@ -38,6 +38,7 @@ export async function POST(request: Request) {
   const catalogByCode = new Map<string, CatalogEntry>(
     getCatalogEntries(articles.map((a) => a.codice.trim().toUpperCase())).map((e) => [e.codice, e])
   );
+  const aiSettings = getAiSettings();
 
   let anthropicClient;
   try {
@@ -86,7 +87,9 @@ export async function POST(request: Request) {
         anthropicClient,
         supplier,
         supplierArticles,
-        catalogByCode
+        catalogByCode,
+        aiSettings.model,
+        aiSettings.reasoning
       );
       const righe = righeGrezze.map((riga) => {
         if (!riga.quantitaPerConfezione) return riga;

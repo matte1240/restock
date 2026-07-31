@@ -1,9 +1,33 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { UNASSIGNED_SUPPLIER_ID } from "./supplier-match";
-import type { AssignedArticle, CatalogEntry, OrderLine, Supplier } from "./types";
+import type { AiReasoningLevel, AssignedArticle, CatalogEntry, OrderLine, Supplier } from "./types";
 
 const BATCH_SIZE = 45;
 const DEFAULT_MODEL = "claude-sonnet-5";
+const DEEP_THINKING_BUDGET_TOKENS = 4096;
+
+/** Extended thinking counts toward max_tokens and (when enabled) requires tool_choice
+ * "auto" instead of a forced tool call, so both need adjusting together. */
+function buildThinkingConfig(
+  reasoning: AiReasoningLevel,
+  baseMaxTokens: number
+): { thinking?: Anthropic.ThinkingConfigParam; maxTokens: number; forceAutoToolChoice: boolean } {
+  if (reasoning === "deep") {
+    return {
+      thinking: { type: "enabled", budget_tokens: DEEP_THINKING_BUDGET_TOKENS },
+      maxTokens: baseMaxTokens + DEEP_THINKING_BUDGET_TOKENS,
+      forceAutoToolChoice: true,
+    };
+  }
+  if (reasoning === "adaptive") {
+    return {
+      thinking: { type: "adaptive" },
+      maxTokens: baseMaxTokens + DEEP_THINKING_BUDGET_TOKENS,
+      forceAutoToolChoice: true,
+    };
+  }
+  return { thinking: undefined, maxTokens: baseMaxTokens, forceAutoToolChoice: false };
+}
 
 const PROPOSE_ORDERS_TOOL = {
   name: "propose_orders",
@@ -158,7 +182,7 @@ Obiettivo: la quantità ordinata deve coprire il consumo previsto fino al prossi
 Articoli:
 ${rows}
 
-Rispondi chiamando lo strumento "propose_orders" con una riga per ciascun codice articolo elencato sopra.`;
+Rispondi SEMPRE chiamando lo strumento "propose_orders" con una riga per ciascun codice articolo elencato sopra, anche dopo eventuali ragionamenti intermedi.`;
 }
 
 export interface AiClientOptions {
@@ -179,15 +203,19 @@ export function createAnthropicClient(options: AiClientOptions = {}) {
 async function proposeOrdersForBatch(
   client: Anthropic,
   model: string,
+  reasoning: AiReasoningLevel,
   supplier: Supplier,
   batch: AssignedArticle[],
   catalogByCode: Map<string, CatalogEntry>
 ): Promise<ProposeOrdersResult[]> {
+  const { thinking, maxTokens, forceAutoToolChoice } = buildThinkingConfig(reasoning, 4096);
+
   const response = await client.messages.create({
     model,
-    max_tokens: 4096,
+    max_tokens: maxTokens,
+    thinking,
     tools: [PROPOSE_ORDERS_TOOL],
-    tool_choice: { type: "tool", name: "propose_orders" },
+    tool_choice: forceAutoToolChoice ? { type: "auto" } : { type: "tool", name: "propose_orders" },
     messages: [{ role: "user", content: buildPrompt(supplier, batch, catalogByCode) }],
   });
 
@@ -207,13 +235,14 @@ export async function generateOrderProposalForSupplier(
   supplier: Supplier,
   articles: AssignedArticle[],
   catalogByCode: Map<string, CatalogEntry> = new Map(),
-  model: string = process.env.ANTHROPIC_MODEL ?? DEFAULT_MODEL
+  model: string = process.env.ANTHROPIC_MODEL ?? DEFAULT_MODEL,
+  reasoning: AiReasoningLevel = "none"
 ): Promise<OrderLine[]> {
   const batches = chunk(articles, BATCH_SIZE);
   const results: ProposeOrdersResult[] = [];
 
   for (const batch of batches) {
-    const batchResults = await proposeOrdersForBatch(client, model, supplier, batch, catalogByCode);
+    const batchResults = await proposeOrdersForBatch(client, model, reasoning, supplier, batch, catalogByCode);
     results.push(...batchResults);
   }
 
@@ -239,11 +268,15 @@ export async function generateOrderProposalForSupplier(
 export async function enrichArticleWithWebSearch(
   client: Anthropic,
   codice: string,
-  model: string = process.env.ANTHROPIC_MODEL ?? DEFAULT_MODEL
+  model: string = process.env.ANTHROPIC_MODEL ?? DEFAULT_MODEL,
+  reasoning: AiReasoningLevel = "none"
 ): Promise<EnrichArticleResult> {
+  const { thinking, maxTokens } = buildThinkingConfig(reasoning, 2048);
+
   const response = await client.messages.create({
     model,
-    max_tokens: 2048,
+    max_tokens: maxTokens,
+    thinking,
     tools: [
       { type: "web_search_20260318", name: "web_search", max_uses: 3 },
       SAVE_PRODUCT_INFO_TOOL,
