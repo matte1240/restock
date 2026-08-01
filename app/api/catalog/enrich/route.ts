@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAnthropicClient, enrichArticleWithWebSearch } from "@/lib/ai";
-import { getAiSettings, getCatalogEntries, upsertCatalogEntry } from "@/lib/db";
+import { getAiSettings, getCatalogEntries, listSuppliers, upsertCatalogEntry } from "@/lib/db";
+import { matchArticleToSupplier, stripMatchedPrefix } from "@/lib/supplier-match";
 import type { CatalogEntry } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -31,14 +32,28 @@ export async function POST(request: Request) {
 
   const existingByCode = new Map(getCatalogEntries(codici).map((e) => [e.codice, e]));
   const aiSettings = getAiSettings();
+  const suppliers = listSuppliers();
 
   const entries: CatalogEntry[] = [];
   for (const codice of codici) {
+    const match = matchArticleToSupplier(codice, suppliers);
+    const fornitoreId = existingByCode.get(codice)?.fornitoreId ?? match.fornitoreId;
+    const context =
+      match.fornitoreNome && !match.ambiguo
+        ? { produttore: match.fornitoreNome, codicePulito: stripMatchedPrefix(codice, match.prefissoUsato) }
+        : {};
+
     try {
-      const result = await enrichArticleWithWebSearch(client, codice, aiSettings.model, aiSettings.reasoning);
+      const result = await enrichArticleWithWebSearch(
+        client,
+        codice,
+        aiSettings.model,
+        aiSettings.reasoning,
+        context
+      );
       const entry: CatalogEntry = {
         codice,
-        fornitoreId: existingByCode.get(codice)?.fornitoreId ?? null,
+        fornitoreId,
         descrizione: result.descrizione,
         ordinaAConfezione: result.ordinaAConfezione,
         unitaConfezione: result.unitaConfezione,
@@ -52,7 +67,7 @@ export async function POST(request: Request) {
       console.error(`Errore nella ricerca AI per il codice ${codice}:`, error);
       entries.push({
         codice,
-        fornitoreId: existingByCode.get(codice)?.fornitoreId ?? null,
+        fornitoreId,
         descrizione: null,
         ordinaAConfezione: false,
         unitaConfezione: null,

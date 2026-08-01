@@ -73,7 +73,8 @@ const SAVE_PRODUCT_INFO_TOOL = {
     properties: {
       descrizione: {
         type: ["string", "null"] as const,
-        description: "Breve descrizione/nome del prodotto (es. 'Nastro adesivo 3M Scotch 19mm x 66m').",
+        description:
+          "Descrizione dettagliata del prodotto in italiano (nome, caratteristiche principali, dimensioni/misure, materiale, ecc. se trovati), non solo una breve etichetta.",
       },
       ordinaAConfezione: {
         type: "boolean" as const,
@@ -263,15 +264,28 @@ export async function generateOrderProposalForSupplier(
   });
 }
 
+export interface EnrichArticleContext {
+  /** Manufacturer/brand name already known from the configured supplier prefix (e.g. "Mirka"). */
+  produttore?: string | null;
+  /** Article code with the internal warehouse prefix already stripped, closer to the manufacturer's own code. */
+  codicePulito?: string | null;
+}
+
 /** Uses Claude's server-side web search to look up product info for an article code and
  * extract structured data (description, whether it's ordered by pallet/carton, etc.). */
 export async function enrichArticleWithWebSearch(
   client: Anthropic,
   codice: string,
   model: string = process.env.ANTHROPIC_MODEL ?? DEFAULT_MODEL,
-  reasoning: AiReasoningLevel = "none"
+  reasoning: AiReasoningLevel = "none",
+  context: EnrichArticleContext = {}
 ): Promise<EnrichArticleResult> {
   const { thinking, maxTokens } = buildThinkingConfig(reasoning, 2048);
+
+  const searchTarget =
+    context.produttore && context.codicePulito
+      ? `il prodotto del produttore "${context.produttore}" con codice "${context.codicePulito}" (il codice interno di magazzino completo è "${codice}", ma "${context.codicePulito}" è la parte che identifica il prodotto presso il produttore: usa questa per la ricerca, ignorando il prefisso interno di magazzino)`
+      : `il prodotto con codice articolo "${codice}" (potrebbe essere un codice interno di magazzino che include il nome del produttore/fornitore, es. un codice che inizia con "3M" per prodotti 3M)`;
 
   const response = await client.messages.create({
     model,
@@ -284,7 +298,9 @@ export async function enrichArticleWithWebSearch(
     messages: [
       {
         role: "user",
-        content: `Cerca sul web informazioni sul prodotto con codice articolo "${codice}" (potrebbe essere un codice interno di magazzino che include il nome del produttore/fornitore, es. un codice che inizia con "3M" per prodotti 3M). Cerca di capire di che prodotto si tratta, e soprattutto se viene tipicamente venduto/ordinato in confezioni multiple (bancale, cartone, scatola) invece che a pezzo singolo, e quante unità contiene una confezione.
+        content: `Cerca sul web informazioni su ${searchTarget}. Cerca di capire di che prodotto si tratta, e soprattutto se viene tipicamente venduto/ordinato in confezioni multiple (bancale, cartone, scatola) invece che a pezzo singolo, e quante unità contiene una confezione.
+
+Scrivi la descrizione in italiano e più dettagliata possibile (caratteristiche, dimensioni/misure, materiale, ecc.), non una semplice etichetta breve.
 
 Quando hai finito di cercare (anche se non trovi nulla di utile), chiama SEMPRE lo strumento "save_product_info" con i risultati, usando null per i campi che non sei riuscito a determinare.`,
       },
