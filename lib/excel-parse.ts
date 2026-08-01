@@ -1,21 +1,26 @@
 import ExcelJS from "exceljs";
 import type { Article } from "./types";
 
-type RequiredField = "codice" | "giacenzaAttuale" | "impegnato" | "ordinato" | "qtaScarico" | "qtaCarico";
-type OptionalField = "lottoRiordino" | "scortaMinima";
+type RequiredField = "codice" | "giacenzaAttuale" | "impegnato" | "qtaScarico";
+type ZeroDefaultField = "ordinato" | "qtaCarico";
+type NullableOptionalField = "lottoRiordino" | "scortaMinima";
 
 const REQUIRED_COLUMN_ALIASES: Record<RequiredField, string[]> = {
-  codice: ["codice articolo", "codice", "cod articolo", "cod. articolo"],
+  codice: ["codice articolo", "codice", "cod articolo"],
   giacenzaAttuale: ["giacenza attuale", "giacenza"],
   impegnato: ["impegnato"],
-  ordinato: ["ordinato"],
-  qtaScarico: ["qta scarico", "quantita scarico", "q.ta scarico", "qta' scarico"],
-  qtaCarico: ["qta carico", "quantita carico", "q.ta carico", "qta' carico"],
+  qtaScarico: ["qta scarico", "quantita scarico", "q ta scarico"],
 };
 
-const OPTIONAL_COLUMN_ALIASES: Record<OptionalField, string[]> = {
-  lottoRiordino: ["lotto riordino", "lotto di riordino", "lotto"],
-  scortaMinima: ["scorta minima", "scorta min", "giacenza minima", "scorta di sicurezza"],
+/** Not every ERP export tracks these (e.g. no incoming-order data); default to 0 when absent. */
+const ZERO_DEFAULT_COLUMN_ALIASES: Record<ZeroDefaultField, string[]> = {
+  ordinato: ["ordinato"],
+  qtaCarico: ["qta carico", "quantita carico", "q ta carico"],
+};
+
+const NULLABLE_OPTIONAL_COLUMN_ALIASES: Record<NullableOptionalField, string[]> = {
+  lottoRiordino: ["lotto riordino", "lotto di riordino", "lotto", "lt riord"],
+  scortaMinima: ["scorta minima", "scorta min", "sc min", "giacenza minima", "scorta di sicurezza"],
 };
 
 function normalizeHeader(value: string): string {
@@ -23,7 +28,7 @@ function normalizeHeader(value: string): string {
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
-    .replace(/\./g, "")
+    .replace(/[.*']/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -40,7 +45,8 @@ export async function parseArticlesExcel(buffer: ArrayBuffer): Promise<Article[]
 
   const headerRow = sheet.getRow(1);
   const requiredColumnIndex = new Map<RequiredField, number>();
-  const optionalColumnIndex = new Map<OptionalField, number>();
+  const zeroDefaultColumnIndex = new Map<ZeroDefaultField, number>();
+  const nullableColumnIndex = new Map<NullableOptionalField, number>();
 
   headerRow.eachCell({ includeEmpty: false }, (cell, colNumber) => {
     const normalized = normalizeHeader(String(cell.value ?? ""));
@@ -49,9 +55,17 @@ export async function parseArticlesExcel(buffer: ArrayBuffer): Promise<Article[]
         requiredColumnIndex.set(field, colNumber);
       }
     }
-    for (const [field, aliases] of Object.entries(OPTIONAL_COLUMN_ALIASES) as [OptionalField, string[]][]) {
-      if (aliases.includes(normalized) && !optionalColumnIndex.has(field)) {
-        optionalColumnIndex.set(field, colNumber);
+    for (const [field, aliases] of Object.entries(ZERO_DEFAULT_COLUMN_ALIASES) as [ZeroDefaultField, string[]][]) {
+      if (aliases.includes(normalized) && !zeroDefaultColumnIndex.has(field)) {
+        zeroDefaultColumnIndex.set(field, colNumber);
+      }
+    }
+    for (const [field, aliases] of Object.entries(NULLABLE_OPTIONAL_COLUMN_ALIASES) as [
+      NullableOptionalField,
+      string[],
+    ][]) {
+      if (aliases.includes(normalized) && !nullableColumnIndex.has(field)) {
+        nullableColumnIndex.set(field, colNumber);
       }
     }
   });
@@ -61,7 +75,7 @@ export async function parseArticlesExcel(buffer: ArrayBuffer): Promise<Article[]
   );
   if (missing.length > 0) {
     throw new ExcelParseError(
-      `Colonne mancanti nel file Excel: ${missing.join(", ")}. Intestazioni attese: Codice Articolo, Giacenza Attuale, Impegnato, Ordinato, Qta Scarico, Qta Carico.`
+      `Colonne mancanti nel file Excel: ${missing.join(", ")}. Intestazioni richieste: Codice Articolo, Giacenza (Attuale), Impegnato, Qta Scarico.`
     );
   }
 
@@ -85,23 +99,30 @@ export async function parseArticlesExcel(buffer: ArrayBuffer): Promise<Article[]
     const codice = String(codiceCell.value ?? "").trim();
     if (!codice) return;
 
-    const readNumber = (field: RequiredField) => cellNumericValue(row.getCell(requiredColumnIndex.get(field)!)) ?? 0;
+    const readRequiredNumber = (field: RequiredField) =>
+      cellNumericValue(row.getCell(requiredColumnIndex.get(field)!)) ?? 0;
 
-    const readOptionalNumber = (field: OptionalField) => {
-      const colNumber = optionalColumnIndex.get(field);
+    const readZeroDefaultNumber = (field: ZeroDefaultField) => {
+      const colNumber = zeroDefaultColumnIndex.get(field);
+      if (colNumber === undefined) return 0;
+      return cellNumericValue(row.getCell(colNumber)) ?? 0;
+    };
+
+    const readNullableNumber = (field: NullableOptionalField) => {
+      const colNumber = nullableColumnIndex.get(field);
       if (colNumber === undefined) return null;
       return cellNumericValue(row.getCell(colNumber));
     };
 
     articles.push({
       codice,
-      giacenzaAttuale: readNumber("giacenzaAttuale"),
-      impegnato: readNumber("impegnato"),
-      ordinato: readNumber("ordinato"),
-      qtaScarico: readNumber("qtaScarico"),
-      qtaCarico: readNumber("qtaCarico"),
-      lottoRiordino: readOptionalNumber("lottoRiordino"),
-      scortaMinima: readOptionalNumber("scortaMinima"),
+      giacenzaAttuale: readRequiredNumber("giacenzaAttuale"),
+      impegnato: readRequiredNumber("impegnato"),
+      qtaScarico: readRequiredNumber("qtaScarico"),
+      ordinato: readZeroDefaultNumber("ordinato"),
+      qtaCarico: readZeroDefaultNumber("qtaCarico"),
+      lottoRiordino: readNullableNumber("lottoRiordino"),
+      scortaMinima: readNullableNumber("scortaMinima"),
     });
   });
 
