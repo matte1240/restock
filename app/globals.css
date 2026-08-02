@@ -1,26 +1,20 @@
 @import "tailwindcss";
+@import "./nocturne.css";
 
+html, body {
+  height: 100%;
+}
+
+/* next/font self-hosts Inter under this variable; point the design tokens at it
+   instead of the literal family name so the optimized/local font is actually used. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --font-heading: var(--font-inter), system-ui, sans-serif;
+  --font-body: var(--font-inter), system-ui, sans-serif;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+.nav-link:hover {
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
 }
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+.nav-link[aria-current="page"]:hover {
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
 }

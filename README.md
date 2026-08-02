@@ -1,18 +1,22 @@
-# Riordino Fornitori
+# OrdinaAI — Piano Ordini
 
-Webapp per generare proposte d'ordine per fornitore a partire da un file Excel di magazzino, usando Claude (Anthropic) per calcolare le quantità consigliate.
+Webapp per generare proposte d'ordine per fornitore a partire da un file Excel di magazzino, usando Claude (Anthropic) per calcolare le quantità consigliate. Tema visivo scuro "Nocturne".
 
-## Flusso
+## Sezioni
 
-1. **Carica** il file Excel con gli articoli. Colonne attese (intestazioni in italiano, case-insensitive): `Codice Articolo`, `Giacenza Attuale`, `Impegnato`, `Ordinato`, `Qta Scarico`, `Qta Carico`. `Qta Scarico`/`Qta Carico` sono i totali movimentati da inizio anno a oggi. Colonne opzionali, se presenti: `Lotto Riordino` (multiplo minimo d'ordine, ha priorità sul confezionamento del catalogo) e `Scorta Minima` (soglia sotto cui non si dovrebbe scendere).
-2. **Impostazioni AI**: scegli modello Claude (Sonnet 5 / Opus 5 / Haiku 4.5) e livello di ragionamento (nessuno / adattivo / approfondito) usati per generare le proposte e per la ricerca prodotto. Salvate nel database, valide per tutta l'app finché non le cambi.
-4. **Configura i fornitori**: nome, prefissi del codice articolo (es. `CAL`, `S`, `3M`) e frequenza ordini (settimanale / quindicinale / mensile / personalizzata). Salvati nel database del server.
-5. **Catalogo articoli**: incolla codici articolo e usa la ricerca AI (con accesso al web) per trovare descrizione prodotto e se/come va ordinato a confezione (es. bancale, cartone) con quanti pezzi — utile per articoli come i nastri 3M che vanno ordinati a bancale. Modificabile a mano.
-6. **Rivedi l'assegnazione automatica** articolo → fornitore (basata sul prefisso più lungo che corrisponde) e assegna manualmente eventuali articoli non riconosciuti (restano comunque inclusi nella proposta, raggruppati come "Non assegnato").
-7. **Genera la proposta ordini**: l'app calcola il consumo medio giornaliero e la copertura di magazzino per articolo, poi chiede a Claude di proporre le quantità da ordinare per ciascun fornitore, tenendo conto di scorta minima e lotto di riordino se presenti. Se un articolo è segnato "a confezione" (dal catalogo o dal lotto Excel), la quantità viene arrotondata per eccesso al multiplo.
-8. **Scarica** il file Excel finale, con un foglio per fornitore.
+- **Piano Ordini** (`/`): carica il file Excel, rivedi l'anteprima, genera il piano con l'AI, riassegna fornitori riga per riga se serve, approva ed esporta in Excel.
+- **Articoli** (`/articoli`): catalogo prodotti — cerca info prodotto con l'AI (accesso al web) o inseriscile a mano, con confezionamento (bancale/cartone) e descrizione.
+- **Produttori** (`/produttori`): anagrafica fornitori (nome, prefissi codice articolo, frequenza ordini) e Impostazioni AI (modello e livello di ragionamento).
+- **Storico** (`/storico`): ordini approvati in passato, con possibilità di riscaricare l'Excel di ciascuno.
 
-Fornitori e catalogo articoli sono salvati in un database **SQLite** locale sul server (file `data/restock.db`, percorso configurabile via `DATABASE_PATH`). I dati di magazzino (giacenza/impegnato/ordinato/consumo) restano legati al file Excel caricato di volta in volta, non vengono salvati storicamente.
+## Flusso Piano Ordini
+
+1. **Carica** il file Excel con gli articoli. Colonne attese (intestazioni in italiano, case-insensitive): `Codice Articolo`, `Giacenza Attuale`, `Impegnato`, `Ordinato`, `Qta Scarico`, `Qta Carico`. `Qta Scarico`/`Qta Carico` sono i totali movimentati da inizio anno a oggi (`Ordinato`/`Qta Carico` sono opzionali, 0 se assenti). Colonne opzionali: `Lotto Riordino` (multiplo minimo d'ordine, ha priorità sul confezionamento del catalogo) e `Scorta Minima` (soglia sotto cui non si dovrebbe scendere).
+2. **Anteprima**: articoli assegnati automaticamente al fornitore in base al prefisso del codice (configurato in Produttori); stato "Da riordinare" se sotto scorta minima.
+3. **Genera piano con AI**: Claude calcola, per ogni articolo sotto copertura, la quantità consigliata tenendo conto di consumo, scorta minima e lotto di riordino. Il piano è una tabella unica con fornitore riassegnabile per riga.
+4. **Approva**: il piano viene salvato nello Storico ed è scaricabile in Excel (un foglio per fornitore).
+
+Fornitori, catalogo articoli, impostazioni AI e storico ordini sono salvati in un database **SQLite** locale sul server (file `data/restock.db`, percorso configurabile via `DATABASE_PATH`). I dati di magazzino (giacenza/impegnato/ordinato/consumo) restano legati al file Excel caricato di volta in volta, non vengono salvati storicamente — solo il piano generato viene conservato, come snapshot, quando approvato.
 
 ## Setup
 

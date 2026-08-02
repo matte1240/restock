@@ -1,19 +1,16 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter } from "next/font/google";
 import "./globals.css";
+import { PianoBadgeProvider } from "@/components/PianoBadgeContext";
+import { Sidebar } from "@/components/Sidebar";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
-  title: "Riordino Fornitori",
+  title: "OrdinaAI — Piano Ordini",
   description: "Genera proposte d'ordine per fornitore a partire dai dati di magazzino, con l'aiuto dell'AI.",
 };
 
@@ -23,11 +20,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="it"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col">{children}</body>
+    <html lang="it" className={`${inter.variable} h-full antialiased`} data-theme="dark">
+      <body>
+        <PianoBadgeProvider>
+          <div style={{ display: "flex", height: "100vh", background: "var(--color-bg)", color: "var(--color-text)", fontFamily: "var(--font-body)" }}>
+            <Sidebar />
+            <div style={{ flex: 1, overflowY: "auto", padding: "var(--space-8) 40px" }}>{children}</div>
+          </div>
+        </PianoBadgeProvider>
+      </body>
     </html>
   );
 }

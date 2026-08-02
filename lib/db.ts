@@ -1,7 +1,15 @@
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import type { AiReasoningLevel, AiSettings, CatalogEntry, OrderFrequency, Supplier } from "./types";
+import type {
+  AiReasoningLevel,
+  AiSettings,
+  CatalogEntry,
+  OrderFrequency,
+  StoricoOrdine,
+  Supplier,
+  SupplierOrderProposal,
+} from "./types";
 
 const DEFAULT_AI_SETTINGS: AiSettings = {
   model: process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5",
@@ -42,6 +50,15 @@ function getDb(): DatabaseSync {
       id INTEGER PRIMARY KEY CHECK (id = 1),
       model TEXT NOT NULL,
       reasoning TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS storico_ordini (
+      id TEXT PRIMARY KEY,
+      creato_il TEXT NOT NULL,
+      fornitori TEXT NOT NULL,
+      numero_articoli INTEGER NOT NULL,
+      stato TEXT NOT NULL,
+      piano_json TEXT NOT NULL
     );
   `);
   return db;
@@ -185,4 +202,41 @@ export function saveAiSettings(settings: AiSettings): AiSettings {
     )
     .run(settings.model, settings.reasoning);
   return settings;
+}
+
+interface StoricoRow {
+  id: string;
+  creato_il: string;
+  fornitori: string;
+  numero_articoli: number;
+  stato: string;
+  piano_json: string;
+}
+
+function rowToStorico(row: StoricoRow): StoricoOrdine {
+  return {
+    id: row.id,
+    creatoIl: row.creato_il,
+    fornitori: row.fornitori,
+    numeroArticoli: row.numero_articoli,
+    stato: row.stato,
+    piano: JSON.parse(row.piano_json) as SupplierOrderProposal[],
+  };
+}
+
+export function listStoricoOrdini(): StoricoOrdine[] {
+  const rows = getDb()
+    .prepare("SELECT * FROM storico_ordini ORDER BY creato_il DESC")
+    .all() as unknown as StoricoRow[];
+  return rows.map(rowToStorico);
+}
+
+export function insertStoricoOrdine(entry: StoricoOrdine): StoricoOrdine {
+  getDb()
+    .prepare(
+      `INSERT INTO storico_ordini (id, creato_il, fornitori, numero_articoli, stato, piano_json)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    )
+    .run(entry.id, entry.creatoIl, entry.fornitori, entry.numeroArticoli, entry.stato, JSON.stringify(entry.piano));
+  return entry;
 }

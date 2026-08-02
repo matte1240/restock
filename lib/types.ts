@@ -79,3 +79,12 @@ export interface AiSettings {
   model: string;
   reasoning: AiReasoningLevel;
 }
+
+export interface StoricoOrdine {
+  id: string;
+  creatoIl: string;
+  fornitori: string;
+  numeroArticoli: number;
+  stato: string;
+  piano: SupplierOrderProposal[];
+}
